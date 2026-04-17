@@ -6,9 +6,9 @@ import type { ProjectInfo } from "./validate";
 
 export type Platform = "ios" | "android";
 
-const OUTPUT: Record<Platform, string> = {
-  ios: "build/ios-archive.tar.gz",
-  android: "build/android-prod.aab",
+const DEST: Record<Platform, string> = {
+  ios: "build/app.ipa",
+  android: "build/app.aab",
 };
 
 function run(command: string, args: string[], cwd: string): Promise<void> {
@@ -34,11 +34,58 @@ function startTimer(): () => void {
   };
 }
 
+function easBuild(platform: Platform, cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "build",
+      "--platform", platform,
+      "--profile", "production-local",
+      "--local",
+      "--non-interactive",
+    ];
+
+    console.log(chalk.dim(`  $ eas ${args.join(" ")}`));
+
+    const proc = spawn("eas", args, {
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      cwd,
+    });
+
+    let artifactPath: string | undefined;
+
+    proc.stdout?.on("data", (data: Buffer) => {
+      const text = data.toString();
+      const match = text.match(/You can find the build artifacts? in (.+)/);
+      if (match) {
+        artifactPath = match[1].trim();
+      }
+    });
+
+    // Build output goes to stderr — pipe it through so the user sees progress
+    proc.stderr?.on("data", (data: Buffer) => {
+      process.stderr.write(data);
+    });
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`eas build failed (exit ${code})`));
+        return;
+      }
+      if (!artifactPath) {
+        reject(new Error("Build succeeded but could not find artifact path in output."));
+        return;
+      }
+      resolve(artifactPath);
+    });
+  });
+}
+
 export async function buildPlatform(project: ProjectInfo, platform: Platform): Promise<string> {
   const { cwd, packageManager, hasPreBuildScript } = project;
-  const outputPath = path.join(cwd, OUTPUT[platform]);
+  const destPath = path.join(cwd, DEST[platform]);
 
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
 
   if (hasPreBuildScript) {
     console.log(chalk.blue("\n→ Running ship:prebuild..."));
@@ -49,27 +96,17 @@ export async function buildPlatform(project: ProjectInfo, platform: Platform): P
   console.log(chalk.blue(`\n📦 Building · ${platform.toUpperCase()}`));
   const stopTimer = startTimer();
 
+  let rawPath: string;
   try {
-    await run(
-      "eas",
-      [
-        "build",
-        "--platform", platform,
-        "--profile", "production-local",
-        "--local",
-        "--non-interactive",
-        "--output", outputPath,
-      ],
-      cwd
-    );
+    rawPath = await easBuild(platform, cwd);
   } finally {
     stopTimer();
   }
 
-  if (!fs.existsSync(outputPath)) {
-    throw new Error(`Build artifact not found at: ${outputPath}`);
-  }
+  // Move artifact from EAS temp location to ./build/
+  fs.copyFileSync(rawPath, destPath);
+  fs.rmSync(rawPath, { force: true });
 
-  console.log(chalk.green(`  ✓ Artifact → ${outputPath}`));
-  return outputPath;
+  console.log(chalk.green(`  ✓ Artifact → ${destPath}`));
+  return destPath;
 }
