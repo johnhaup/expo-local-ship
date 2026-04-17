@@ -1,10 +1,10 @@
 {
-  "name": "@johnhaup/expo-ship",
+  "name": "@johnhaup/expo-local-ship",
   "version": "1.0.0",
   "description": "CLI to build and submit Expo apps locally",
   "private": false,
   "bin": {
-    "expo-ship": "./dist/index.js"
+    "expo-local-ship": "./dist/index.js"
   },
   "files": [
     "dist"
