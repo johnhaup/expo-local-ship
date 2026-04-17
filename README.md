@@ -67,6 +67,9 @@ npx expo-local-ship both
 
 # Build only, skip submission
 npx expo-local-ship ios --no-submit
+
+# Build + open in Transporter instead of eas submit
+npx expo-local-ship ios --transporter
 ```
 
 If no platform argument is provided, you'll be prompted to choose.

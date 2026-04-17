@@ -1,19 +1,20 @@
 import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { buildPlatform, type Platform } from "./build";
-import { submitEas } from "./submit";
+import { openTransporter, submitEas } from "./submit";
 import { validate } from "./validate";
 
 const VALID_PLATFORMS = ["ios", "android", "both"] as const;
 type PlatformArg = (typeof VALID_PLATFORMS)[number];
 
-function parseArgs(): { platformArg: PlatformArg | undefined; noSubmit: boolean } {
+function parseArgs(): { platformArg: PlatformArg | undefined; noSubmit: boolean; useTransporter: boolean } {
   const args = process.argv.slice(2);
   const noSubmit = args.includes("--no-submit");
+  const useTransporter = args.includes("--transporter");
   const platformArg = args.find((a): a is PlatformArg =>
     VALID_PLATFORMS.includes(a as PlatformArg)
   );
-  return { platformArg, noSubmit };
+  return { platformArg, noSubmit, useTransporter };
 }
 
 async function resolvePlatform(
@@ -38,10 +39,11 @@ async function main() {
   const cwd = process.cwd();
   console.log(chalk.bold("\n  expo-local-ship 🚢\n"));
 
-  const { platformArg, noSubmit } = parseArgs();
+  const { platformArg, noSubmit, useTransporter } = parseArgs();
   const project = validate(cwd);
   console.log(chalk.dim(`  Project: ${project.name}`));
   if (noSubmit) console.log(chalk.dim("  Mode: build only (--no-submit)\n"));
+  else if (useTransporter) console.log(chalk.dim("  Mode: build + Transporter (--transporter)\n"));
   else console.log(chalk.dim("  Mode: build + submit\n"));
 
   const platformSelection = await resolvePlatform(platformArg, project.hasIos, project.hasAndroid);
@@ -53,6 +55,8 @@ async function main() {
 
     if (noSubmit) {
       console.log(chalk.dim(`\n  Artifact saved: ${artifactPath}`));
+    } else if (useTransporter) {
+      openTransporter(artifactPath);
     } else {
       await submitEas(project, platform, artifactPath);
     }
