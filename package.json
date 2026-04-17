@@ -33,6 +33,14 @@
     "submit",
     "cli"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/johnhaup/expo-local-ship.git"
+  },
+  "homepage": "https://github.com/johnhaup/expo-local-ship#readme",
+  "bugs": {
+    "url": "https://github.com/johnhaup/expo-local-ship/issues"
+  },
   "author": "John Haupenthal",
   "license": "MIT",
   "publishConfig": {
