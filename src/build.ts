@@ -22,11 +22,6 @@ function run(command: string, args: string[], cwd: string): Promise<void> {
   });
 }
 
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
-}
-
 function easBuild(platform: Platform, cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = [
@@ -37,7 +32,7 @@ function easBuild(platform: Platform, cwd: string): Promise<string> {
       "--non-interactive",
     ];
 
-    console.log(chalk.dim(`  $ eas ${args.join(" ")}`));
+    console.log(chalk.dim(`  $ eas ${args.join(" ")}\n`));
 
     const proc = spawn("eas", args, {
       shell: true,
@@ -46,6 +41,17 @@ function easBuild(platform: Platform, cwd: string): Promise<string> {
     });
 
     let artifactPath: string | undefined;
+    let timerText = "";
+    const buildStart = Date.now();
+
+    const writeTimer = () => {
+      const s = Math.floor((Date.now() - buildStart) / 1000);
+      timerText = chalk.dim(`  ⏱  ${Math.floor(s / 60)}m ${s % 60}s`);
+      process.stdout.write(`\r\x1b[K${timerText}`);
+    };
+
+    const interval = setInterval(writeTimer, 1000);
+    writeTimer();
 
     proc.stdout?.on("data", (data: Buffer) => {
       const text = data.toString();
@@ -55,12 +61,16 @@ function easBuild(platform: Platform, cwd: string): Promise<string> {
       }
     });
 
-    // Build output goes to stderr — pipe it through so the user sees progress
+    // Clear timer line, write build output, reprint timer underneath
     proc.stderr?.on("data", (data: Buffer) => {
-      process.stderr.write(data);
+      process.stdout.write(`\r\x1b[K`);
+      process.stdout.write(data);
+      process.stdout.write(timerText);
     });
 
     proc.on("close", (code) => {
+      clearInterval(interval);
+      process.stdout.write("\n");
       if (code !== 0) {
         reject(new Error(`eas build failed (exit ${code})`));
         return;
@@ -87,14 +97,12 @@ export async function buildPlatform(project: ProjectInfo, platform: Platform): P
   }
 
   console.log(chalk.blue(`\n📦 Building · ${platform.toUpperCase()}`));
-  const buildStart = Date.now();
   const rawPath = await easBuild(platform, cwd);
-  const elapsed = formatElapsed(Date.now() - buildStart);
 
   // Move artifact from EAS temp location to ./build/
   fs.copyFileSync(rawPath, destPath);
   fs.rmSync(rawPath, { force: true });
 
-  console.log(chalk.green(`\n  ✓ Build complete in ${elapsed} → ${destPath}`));
+  console.log(chalk.green(`  ✓ Artifact → ${destPath}`));
   return destPath;
 }
