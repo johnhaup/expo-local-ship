@@ -22,16 +22,9 @@ function run(command: string, args: string[], cwd: string): Promise<void> {
   });
 }
 
-function startTimer(): () => void {
-  const start = Date.now();
-  const interval = setInterval(() => {
-    const s = Math.floor((Date.now() - start) / 1000);
-    process.stdout.write(`\r  ⏱  ${Math.floor(s / 60)}m ${s % 60}s `);
-  }, 1000);
-  return () => {
-    clearInterval(interval);
-    process.stdout.write("\n");
-  };
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
 function easBuild(platform: Platform, cwd: string): Promise<string> {
@@ -94,19 +87,14 @@ export async function buildPlatform(project: ProjectInfo, platform: Platform): P
   }
 
   console.log(chalk.blue(`\n📦 Building · ${platform.toUpperCase()}`));
-  const stopTimer = startTimer();
-
-  let rawPath: string;
-  try {
-    rawPath = await easBuild(platform, cwd);
-  } finally {
-    stopTimer();
-  }
+  const buildStart = Date.now();
+  const rawPath = await easBuild(platform, cwd);
+  const elapsed = formatElapsed(Date.now() - buildStart);
 
   // Move artifact from EAS temp location to ./build/
   fs.copyFileSync(rawPath, destPath);
   fs.rmSync(rawPath, { force: true });
 
-  console.log(chalk.green(`  ✓ Artifact → ${destPath}`));
+  console.log(chalk.green(`\n  ✓ Build complete in ${elapsed} → ${destPath}`));
   return destPath;
 }
