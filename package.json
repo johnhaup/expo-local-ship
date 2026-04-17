@@ -1,0 +1,16 @@
+{
+  "name": "expo-ship",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "bun index.ts"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.4.1",
+    "chalk": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.3"
+  }
+}
