@@ -51,7 +51,8 @@ export async function submitEas(
     stopTimer();
   }
 
-  console.log(chalk.green("  ✓ Submitted to App Store Connect"));
+  const destination = platform === "ios" ? "App Store Connect" : "Google Play";
+  console.log(chalk.green(`  ✓ Submitted to ${destination}`));
 }
 
 async function extractIpa(tarPath: string): Promise<string> {

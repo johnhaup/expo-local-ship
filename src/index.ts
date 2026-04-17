@@ -6,9 +6,23 @@ import { validate } from "./validate";
 
 type SubmitMethod = "eas" | "transporter" | "skip";
 
+function submitChoicesForPlatform(platform: Platform, submitConfigured: boolean) {
+  const easDescription = submitConfigured
+    ? "Automatic — may occasionally hang"
+    : "⚠ No submit config in eas.json — may prompt for credentials";
+
+  return [
+    { name: "EAS Submit", value: "eas" as const, description: easDescription },
+    ...(platform === "ios"
+      ? [{ name: "Transporter", value: "transporter" as const, description: "Opens Transporter app — more reliable" }]
+      : []),
+    { name: "Build only", value: "skip" as const, description: "Skip submission, keep artifact" },
+  ];
+}
+
 async function main() {
   const cwd = process.cwd();
-  console.log(chalk.bold("\n  expo-ship 🚢\n"));
+  console.log(chalk.bold("\n  expo-local-ship 🚢\n"));
 
   const project = validate(cwd);
   console.log(chalk.dim(`  Project: ${project.name}\n`));
@@ -29,24 +43,16 @@ async function main() {
     choices: platformChoices,
   });
 
-  const submitChoices = [
-    ...(project.submitConfigured
-      ? [{ name: "EAS Submit", value: "eas" as const, description: "Automatic — may occasionally hang" }]
-      : [{ name: "EAS Submit", value: "eas" as const, description: "⚠ No submit config in eas.json — may prompt for credentials" }]),
-    { name: "Transporter", value: "transporter" as const, description: "Opens Transporter app — more reliable" },
-    { name: "Build only", value: "skip" as const, description: "Skip submission, keep artifact" },
-  ];
-
-  const submitMethod = await select<SubmitMethod>({
-    message: "Submit via",
-    choices: submitChoices,
-  });
-
   const platforms: Platform[] =
     platformSelection === "both" ? ["ios", "android"] : [platformSelection];
 
   for (const platform of platforms) {
     const artifactPath = await buildPlatform(project, platform);
+
+    const submitMethod = await select<SubmitMethod>({
+      message: `Submit ${platform.toUpperCase()} via`,
+      choices: submitChoicesForPlatform(platform, project.submitConfigured),
+    });
 
     if (submitMethod === "eas") {
       await submitEas(project, platform, artifactPath);
