@@ -155,6 +155,12 @@ async function preparePoster(
   ]);
 }
 
+const RTL_LANGUAGES = ["ar", "he", "ur", "fa"];
+
+function directionAttr(locale: string): string {
+  return RTL_LANGUAGES.includes(locale.split("-")[0]) ? ' direction="rtl"' : "";
+}
+
 interface Caption {
   title: [string, string];
   subtitle?: string;
@@ -173,6 +179,7 @@ async function fitFontSize(text: string, size: number, bold: boolean, maxWidth: 
 
 async function frameShot(
   caption: Caption,
+  locale: string,
   deviceScaled: string,
   out: string,
   screenshots: ScreenshotsConfig,
@@ -184,6 +191,7 @@ async function frameShot(
   const deviceWidth = Math.round(1060 * k);
   const cx = width / 2;
   const maxWidth = Math.round(1200 * k);
+  const dir = directionAttr(locale);
   const titleSize = Math.min(
     await fitFontSize(caption.title[0], 104 * k, true, maxWidth, theme.font, tmp),
     await fitFontSize(caption.title[1], 104 * k, true, maxWidth, theme.font, tmp)
@@ -192,9 +200,9 @@ async function frameShot(
 
   const bg = backgroundSvg(width, height, theme, 0.62).replace(
     "</svg>",
-    `  <text x="${cx}" y="${250 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${titleSize}" fill="${theme.text}">${escapeXml(caption.title[0])}</text>
-  <text x="${cx}" y="${372 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${titleSize}" fill="${theme.accent}">${escapeXml(caption.title[1])}</text>
-  ${caption.subtitle ? `<text x="${cx}" y="${490 * k}" text-anchor="middle" font-family="${theme.font}" font-size="${subtitleSize}" fill="${theme.muted}">${escapeXml(caption.subtitle)}</text>` : ""}
+    `  <text x="${cx}" y="${250 * k}" text-anchor="middle"${dir} font-family="${theme.font}" font-weight="bold" font-size="${titleSize}" fill="${theme.text}">${escapeXml(caption.title[0])}</text>
+  <text x="${cx}" y="${372 * k}" text-anchor="middle"${dir} font-family="${theme.font}" font-weight="bold" font-size="${titleSize}" fill="${theme.accent}">${escapeXml(caption.title[1])}</text>
+  ${caption.subtitle ? `<text x="${cx}" y="${490 * k}" text-anchor="middle"${dir} font-family="${theme.font}" font-size="${subtitleSize}" fill="${theme.muted}">${escapeXml(caption.subtitle)}</text>` : ""}
 </svg>`
   );
   const bgPng = path.join(tmp, "bg.png");
@@ -208,6 +216,7 @@ async function frameShot(
 async function framePoster(
   poster: PosterConfig,
   subtitle: string | undefined,
+  locale: string,
   prepared: string,
   out: string,
   screenshots: ScreenshotsConfig,
@@ -217,6 +226,7 @@ async function framePoster(
   const { theme } = screenshots;
   const k = width / DESIGN_WIDTH;
   const p = (name: string) => path.join(tmp, name);
+  const dir = directionAttr(locale);
   const subtitleSize = subtitle ? await fitFontSize(subtitle, 52 * k, false, Math.round(1200 * k), theme.font, tmp) : 0;
 
   await renderSvg(backgroundSvg(width, height, theme, 0.38, 0.45), p("bg.png"));
@@ -226,7 +236,7 @@ async function framePoster(
   <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${theme.background[1]}" stop-opacity="0"/><stop offset="0.55" stop-color="${theme.background[1]}" stop-opacity="0.92"/><stop offset="1" stop-color="${theme.background[1]}" stop-opacity="1"/></linearGradient></defs>
   <rect y="${fadeTop}" width="${width}" height="${height - fadeTop}" fill="url(#fade)"/>
   <text x="${width / 2}" y="${2600 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${112 * k}" fill="${theme.text}">${escapeXml(poster.title)}</text>
-  ${subtitle ? `<text x="${width / 2}" y="${2695 * k}" text-anchor="middle" font-family="${theme.font}" font-size="${subtitleSize}" fill="${theme.muted}">${escapeXml(subtitle)}</text>` : ""}
+  ${subtitle ? `<text x="${width / 2}" y="${2695 * k}" text-anchor="middle"${dir} font-family="${theme.font}" font-size="${subtitleSize}" fill="${theme.muted}">${escapeXml(subtitle)}</text>` : ""}
 </svg>`,
     p("fg.png")
   );
@@ -295,12 +305,12 @@ export async function frameScreenshots(
 
         if (screenshots.poster) {
           const subtitle = captions.poster?.subtitle ?? screenshots.poster.subtitle;
-          await framePoster(screenshots.poster, subtitle, posterDir, path.join(outDir, "00-poster.png"), screenshots, work);
+          await framePoster(screenshots.poster, subtitle, locale, posterDir, path.join(outDir, "00-poster.png"), screenshots, work);
         }
         for (const [i, shot] of screenshots.shots.entries()) {
           const caption = { ...shot, ...captions[shot.raw] };
           const out = path.join(outDir, `${String(i + 1).padStart(2, "0")}-${shot.raw}.png`);
-          await frameShot(caption, devices.get(shot.raw) ?? "", out, screenshots, work);
+          await frameShot(caption, locale, devices.get(shot.raw) ?? "", out, screenshots, work);
         }
         console.log(chalk.dim(`  → ${locale}`));
       }
