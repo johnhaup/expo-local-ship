@@ -4,6 +4,7 @@ CLI to build and submit Expo apps locally.
 
 - **iOS** submits via `xcrun altool` using an App Store Connect API key — fast, reliable, fully automated.
 - **Android** submits via `eas submit`.
+- **App Store listing** — screenshots (capture, frame, upload), metadata, and review submission from one config file. See [App Store](#app-store).
 
 ## Requirements
 
@@ -130,3 +131,102 @@ If no platform argument is provided, you'll be prompted to choose.
    - **Android**: `eas submit --profile production`
 
 Build artifacts are saved to `./build/` in your project root.
+
+## App Store
+
+Everything after the binary upload, driven by a `ship.config.json` in your project root and the same App Store Connect API key used for submission.
+
+| Command | What it does | Auth |
+| --- | --- | --- |
+| `expo-local-ship doctor` | Checks tools, API key, and config | — |
+| `expo-local-ship create` | Creates the app record in App Store Connect (`fastlane produce`) | Apple ID, once per app |
+| `expo-local-ship privacy` | Publishes App Privacy answers | Apple ID, once per app |
+| `expo-local-ship metadata` | Uploads name, subtitle, description, keywords, URLs, categories, age rating, review contact | API key |
+| `expo-local-ship screenshots` | `capture` then `frame` | — |
+| `expo-local-ship screenshots capture [--build]` | Runs your Maestro flow on a simulator and saves raw screenshots | — |
+| `expo-local-ship screenshots frame` | Composites raw screenshots into a device bezel with captions, plus an optional angled-phone poster | — |
+| `expo-local-ship screenshots upload` | Syncs framed screenshots to App Store Connect (replaces what's there) | API key |
+| `expo-local-ship review [--build <n>] [--auto-release]` | Attaches the build (latest by default) and submits for review | API key |
+
+Apple's API keys can't create apps or answer App Privacy, so those two sign in with your Apple ID (set `APPLE_ID` or enter it when prompted; fastlane asks for the password and 2FA code).
+
+### Requirements
+
+- fastlane ≥ 2.241 (first version that accepts 1320×2868 screenshots), ImageMagick 7, librsvg, Maestro
+- A device bezel PNG with a transparent screen (e.g. Apple's [product bezels](https://developer.apple.com/design/resources/#product-bezels)); the screen area is detected automatically
+
+### Demo data for screenshots
+
+`screenshots capture --build` makes a Release build with `EXPO_PUBLIC_STORE_DEMO=1` and installs it on the simulator. Give the app a deep link that loads sample data only when that flag is set, and open it at the start of your flow:
+
+```tsx
+// app/demo.tsx
+const IS_STORE_DEMO = process.env.EXPO_PUBLIC_STORE_DEMO === "1";
+
+export default function DemoScreen() {
+  useEffect(() => {
+    if (IS_STORE_DEMO) useStore.setState(buildDemoData(new Date()));
+  }, []);
+  return <Redirect href="/" />;
+}
+```
+
+The status bar is set to 9:41 with full signal and battery while capturing. Each `takeScreenshot: <name>` in the flow becomes `<dir>/raw/<name>.png`.
+
+### `ship.config.json`
+
+```jsonc
+{
+  "locale": "en-US",
+  "listing": {
+    "name": "My App",
+    "subtitle": "…",
+    "promotionalText": "…",
+    "description": "…",
+    "keywords": "comma,separated",
+    "releaseNotes": "…",
+    "supportUrl": "https://…",
+    "privacyUrl": "https://…",
+    "copyright": "2026 Your Name",
+    "primaryCategory": "FINANCE",
+    "secondaryCategory": "PRODUCTIVITY"
+  },
+  "review": { "firstName": "…", "lastName": "…", "phone": "…", "email": "…", "notes": "…" },
+  // App Store Connect ageRatingDeclaration attributes
+  "ageRating": { "violenceRealistic": "NONE", "unrestrictedWebAccess": false },
+  // fastlane app privacy JSON
+  "privacy": [{ "data_protections": ["DATA_NOT_COLLECTED"] }],
+  "screenshots": {
+    "simulator": "iPhone 17 Pro Max",
+    "flow": "ship/screenshots.yaml",
+    "dir": "ship/screenshots",
+    "bezel": "~/path/to/iPhone Pro Max - Portrait.png",
+    "size": [1320, 2868],
+    "theme": { "background": ["#1D232B", "#0E1114"], "accent": "#26DE81", "text": "#FFFFFF", "muted": "#A3ABB7", "font": "System Font" },
+    "poster": {
+      "raw": "home",
+      "icon": "assets/icon.png",
+      "title": "My App",
+      "subtitle": "…",
+      // optional: spin, tilt (degrees), width, x, y (placement), depth (edge thickness)
+    },
+    "shots": [
+      { "raw": "home", "title": ["First line", "accent line"], "subtitle": "…" }
+    ]
+  }
+}
+```
+
+`bundleId` and `version` come from `app.json` unless set here. Framed output goes to `<dir>/framed/<locale>/`: the poster as `00-poster.png`, then shots in order.
+
+Suggested scripts:
+
+```json
+{
+  "store:doctor": "expo-local-ship doctor",
+  "store:metadata": "expo-local-ship metadata",
+  "store:screenshots": "expo-local-ship screenshots",
+  "store:screenshots:upload": "expo-local-ship screenshots upload",
+  "store:review": "expo-local-ship review"
+}
+```

@@ -1,7 +1,7 @@
 {
   "name": "@johnhaup/expo-local-ship",
-  "version": "2.0.0",
-  "description": "CLI to build and submit Expo apps locally",
+  "version": "2.1.0",
+  "description": "CLI to build, submit, and manage App Store listings for Expo apps locally",
   "private": false,
   "bin": {
     "expo-local-ship": "./dist/index.js"
@@ -31,7 +31,10 @@
     "eas",
     "build",
     "submit",
-    "cli"
+    "cli",
+    "app-store",
+    "fastlane",
+    "screenshots"
   ],
   "repository": {
     "type": "git",

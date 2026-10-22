@@ -4,6 +4,69 @@ import { buildPlatform, type Platform } from "./build";
 import { runSetup } from "./setup";
 import { openTransporter, submitAltool, submitEas } from "./submit";
 import { validate } from "./validate";
+import { createApp, pushMetadata, submitForReview, uploadPrivacy, uploadScreenshots } from "./store/appstore";
+import { captureScreenshots } from "./store/capture";
+import { loadShipConfig, requireScreenshots } from "./store/config";
+import { runDoctor } from "./store/doctor";
+import { frameScreenshots } from "./store/frame";
+
+const STORE_COMMANDS = ["screenshots", "metadata", "review", "create", "privacy", "doctor"] as const;
+type StoreCommand = (typeof STORE_COMMANDS)[number];
+const SCREENSHOT_STEPS = ["capture", "frame", "upload", "all"];
+
+function isStoreCommand(value: string | undefined): value is StoreCommand {
+  return STORE_COMMANDS.some((c) => c === value);
+}
+
+function flagValue(args: string[], flag: string): string | undefined {
+  const i = args.indexOf(flag);
+  return i >= 0 ? args[i + 1] : undefined;
+}
+
+async function runStoreCommand(command: StoreCommand, args: string[]): Promise<void> {
+  const cwd = process.cwd();
+  if (command === "doctor") {
+    await runDoctor(cwd);
+    return;
+  }
+
+  const config = loadShipConfig(cwd);
+  console.log(chalk.dim(`  ${config.listing.name} · ${config.bundleId} · ${config.version}`));
+
+  switch (command) {
+    case "screenshots": {
+      const step = args.find((a) => !a.startsWith("--")) ?? "all";
+      if (!SCREENSHOT_STEPS.includes(step)) {
+        throw new Error(`Unknown step "${step}". Use capture, frame, upload, or omit for capture + frame.`);
+      }
+      const screenshots = requireScreenshots(config);
+      if (step === "capture" || step === "all") {
+        await captureScreenshots(config, screenshots, { build: args.includes("--build") });
+      }
+      if (step === "frame" || step === "all") {
+        console.log(chalk.blue("\n🖼  Framing"));
+        await frameScreenshots(config, screenshots);
+      }
+      if (step === "upload") await uploadScreenshots(config);
+      break;
+    }
+    case "metadata":
+      await pushMetadata(config);
+      break;
+    case "review":
+      await submitForReview(config, {
+        buildNumber: flagValue(args, "--build"),
+        autoRelease: args.includes("--auto-release"),
+      });
+      break;
+    case "create":
+      await createApp(config);
+      break;
+    case "privacy":
+      await uploadPrivacy(config);
+      break;
+  }
+}
 
 const VALID_PLATFORMS = ["ios", "android", "both"] as const;
 type PlatformArg = (typeof VALID_PLATFORMS)[number];
@@ -40,6 +103,13 @@ async function resolvePlatform(
 async function main() {
   const cwd = process.cwd();
   console.log(chalk.bold("\n  expo-local-ship 🚢\n"));
+
+  const [command, ...rest] = process.argv.slice(2);
+  if (isStoreCommand(command)) {
+    await runStoreCommand(command, rest);
+    if (!process.exitCode) console.log(chalk.bold.green("\n  ✅ All done!\n"));
+    return;
+  }
 
   const { platformArg, noSubmit, useTransporter, setup } = parseArgs();
 

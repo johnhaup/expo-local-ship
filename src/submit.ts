@@ -23,7 +23,7 @@ function startTimer(): () => void {
   };
 }
 
-function loadAscConfig(): AscConfig {
+export function loadAscConfig(): AscConfig {
   const apiKey = process.env.ASC_API_KEY;
   const apiIssuer = process.env.ASC_API_ISSUER;
 
