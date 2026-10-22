@@ -32,21 +32,26 @@ function withApiKey<T>(fn: (keyFile: string) => Promise<T>): Promise<T> {
 }
 
 function deliver(config: ShipConfig, keyFile: string, args: string[], env?: NodeJS.ProcessEnv): Promise<void> {
-  return run(
-    "fastlane",
-    [
-      "deliver",
-      "--api_key_path", keyFile,
-      "--app_identifier", config.bundleId,
-      "--app_version", config.version,
-      "--platform", "ios",
-      "--skip_binary_upload", "true",
-      "--run_precheck_before_submit", "false",
-      "--force", "true",
-      ...args,
-    ],
-    { cwd: config.cwd, env: { FASTLANE_SKIP_UPDATE_CHECK: "1", FASTLANE_HIDE_CHANGELOG: "1", ...env } }
-  );
+  // Without a Deliverfile in the working directory, deliver stops to offer its setup wizard
+  return withTempDir("ship-deliver-", (cwd) => {
+    fs.writeFileSync(path.join(cwd, "Deliverfile"), "");
+    return run(
+      "fastlane",
+      [
+        "deliver",
+        "--api_key_path", keyFile,
+        "--app_identifier", config.bundleId,
+        "--app_version", config.version,
+        "--platform", "ios",
+        "--skip_binary_upload", "true",
+        "--run_precheck_before_submit", "false",
+        "--force", "true",
+        ...(process.env.SHIP_VERBOSE ? ["--verbose"] : []),
+        ...args,
+      ],
+      { cwd, env: { FASTLANE_SKIP_UPDATE_CHECK: "1", FASTLANE_HIDE_CHANGELOG: "1", ...env } }
+    );
+  });
 }
 
 function writeMetadata(config: ShipConfig, dir: string): void {
