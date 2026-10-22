@@ -256,7 +256,7 @@ export function rawDir(screenshots: ScreenshotsConfig): string {
 
 const CONCURRENCY = 4;
 
-/** The primary locale plus every translated locale that has its own captions */
+/** The primary locale plus every localized listing that has its own captions */
 function captionLocales(config: ShipConfig): string[] {
   return [config.locale, ...Object.keys(config.localizations).filter((l) => config.localizations[l].captions)];
 }
