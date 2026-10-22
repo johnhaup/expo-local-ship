@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { capture, run } from "../exec";
-import type { PosterConfig, ScreenshotsConfig, ShipConfig, ShotConfig, ThemeConfig } from "./config";
+import type { PosterConfig, ScreenshotsConfig, ShipConfig, ThemeConfig } from "./config";
 
 // Layout is designed at 1320pt wide and scaled to the configured size
 const DESIGN_WIDTH = 1320;
@@ -76,40 +76,6 @@ function backgroundSvg(width: number, height: number, theme: ThemeConfig, glowY:
 </svg>`;
 }
 
-async function frameShot(
-  shot: ShotConfig,
-  rawPath: string,
-  out: string,
-  bezel: Bezel,
-  screenshots: ScreenshotsConfig,
-  tmp: string
-): Promise<void> {
-  const [width, height] = screenshots.size;
-  const { theme } = screenshots;
-  const k = width / DESIGN_WIDTH;
-  const deviceWidth = Math.round(1060 * k);
-  const cx = width / 2;
-
-  const device = path.join(tmp, "device.png");
-  const deviceScaled = path.join(tmp, "device-scaled.png");
-  await renderDevice(rawPath, bezel, device, tmp);
-  await magick([device, "-resize", `${deviceWidth}x`, deviceScaled]);
-
-  const bg = backgroundSvg(width, height, theme, 0.62).replace(
-    "</svg>",
-    `  <text x="${cx}" y="${250 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${104 * k}" fill="${theme.text}">${escapeXml(shot.title[0])}</text>
-  <text x="${cx}" y="${372 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${104 * k}" fill="${theme.accent}">${escapeXml(shot.title[1])}</text>
-  ${shot.subtitle ? `<text x="${cx}" y="${490 * k}" text-anchor="middle" font-family="${theme.font}" font-size="${48 * k}" fill="${theme.muted}">${escapeXml(shot.subtitle)}</text>` : ""}
-</svg>`
-  );
-  const bgPng = path.join(tmp, "bg.png");
-  await renderSvg(bg, bgPng);
-  await magick([
-    bgPng, deviceScaled, "-geometry", `+${Math.round((width - deviceWidth) / 2)}+${Math.round(600 * k)}`,
-    "-composite", "-alpha", "off", `PNG24:${out}`,
-  ]);
-}
-
 /** Corners of the device after laying it on a table, spinning it, and viewing it in perspective */
 function perspectiveCorners(width: number, height: number, poster: PosterConfig): string {
   const spin = (poster.spin * Math.PI) / 180;
@@ -133,17 +99,15 @@ function perspectiveCorners(width: number, height: number, poster: PosterConfig)
     .join("  ");
 }
 
-async function framePoster(
+/** The angled phone and rounded logo are the same in every locale, so they're rendered once */
+async function preparePoster(
   poster: PosterConfig,
   rawPath: string,
-  out: string,
   bezel: Bezel,
   screenshots: ScreenshotsConfig,
   tmp: string
 ): Promise<void> {
-  const [width, height] = screenshots.size;
-  const { theme } = screenshots;
-  const k = width / DESIGN_WIDTH;
+  const k = screenshots.size[0] / DESIGN_WIDTH;
   const p = (name: string) => path.join(tmp, name);
 
   await renderDevice(rawPath, bezel, p("device.png"), tmp);
@@ -189,6 +153,71 @@ async function framePoster(
     "-draw", `roundrectangle 0,0 ${logoSize - 1},${logoSize - 1} ${radius},${radius}`, ")",
     "-alpha", "set", "-compose", "DstIn", "-composite", p("logo.png"),
   ]);
+}
+
+interface Caption {
+  title: [string, string];
+  subtitle?: string;
+}
+
+/** Shrinks the font size until the rendered line fits within maxWidth */
+async function fitFontSize(text: string, size: number, bold: boolean, maxWidth: number, font: string, tmp: string): Promise<number> {
+  const probe = path.join(tmp, `probe-${size}.png`);
+  await renderSvg(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${maxWidth * 3}" height="${size * 2}"><text x="10" y="${size * 1.4}" font-family="${font}"${bold ? ' font-weight="bold"' : ""} font-size="${size}" fill="#fff">${escapeXml(text)}</text></svg>`,
+    probe
+  );
+  const width = Number(await capture("magick", [probe, "-trim", "-format", "%w", "info:"]));
+  return width > maxWidth ? Math.floor((size * maxWidth) / width) : size;
+}
+
+async function frameShot(
+  caption: Caption,
+  deviceScaled: string,
+  out: string,
+  screenshots: ScreenshotsConfig,
+  tmp: string
+): Promise<void> {
+  const [width, height] = screenshots.size;
+  const { theme } = screenshots;
+  const k = width / DESIGN_WIDTH;
+  const deviceWidth = Math.round(1060 * k);
+  const cx = width / 2;
+  const maxWidth = Math.round(1200 * k);
+  const titleSize = Math.min(
+    await fitFontSize(caption.title[0], 104 * k, true, maxWidth, theme.font, tmp),
+    await fitFontSize(caption.title[1], 104 * k, true, maxWidth, theme.font, tmp)
+  );
+  const subtitleSize = caption.subtitle ? await fitFontSize(caption.subtitle, 48 * k, false, maxWidth, theme.font, tmp) : 0;
+
+  const bg = backgroundSvg(width, height, theme, 0.62).replace(
+    "</svg>",
+    `  <text x="${cx}" y="${250 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${titleSize}" fill="${theme.text}">${escapeXml(caption.title[0])}</text>
+  <text x="${cx}" y="${372 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${titleSize}" fill="${theme.accent}">${escapeXml(caption.title[1])}</text>
+  ${caption.subtitle ? `<text x="${cx}" y="${490 * k}" text-anchor="middle" font-family="${theme.font}" font-size="${subtitleSize}" fill="${theme.muted}">${escapeXml(caption.subtitle)}</text>` : ""}
+</svg>`
+  );
+  const bgPng = path.join(tmp, "bg.png");
+  await renderSvg(bg, bgPng);
+  await magick([
+    bgPng, deviceScaled, "-geometry", `+${Math.round((width - deviceWidth) / 2)}+${Math.round(600 * k)}`,
+    "-composite", "-alpha", "off", `PNG24:${out}`,
+  ]);
+}
+
+async function framePoster(
+  poster: PosterConfig,
+  subtitle: string | undefined,
+  prepared: string,
+  out: string,
+  screenshots: ScreenshotsConfig,
+  tmp: string
+): Promise<void> {
+  const [width, height] = screenshots.size;
+  const { theme } = screenshots;
+  const k = width / DESIGN_WIDTH;
+  const p = (name: string) => path.join(tmp, name);
+  const subtitleSize = subtitle ? await fitFontSize(subtitle, 52 * k, false, Math.round(1200 * k), theme.font, tmp) : 0;
 
   await renderSvg(backgroundSvg(width, height, theme, 0.38, 0.45), p("bg.png"));
   const fadeTop = Math.round(1950 * k);
@@ -197,16 +226,16 @@ async function framePoster(
   <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${theme.background[1]}" stop-opacity="0"/><stop offset="0.55" stop-color="${theme.background[1]}" stop-opacity="0.92"/><stop offset="1" stop-color="${theme.background[1]}" stop-opacity="1"/></linearGradient></defs>
   <rect y="${fadeTop}" width="${width}" height="${height - fadeTop}" fill="url(#fade)"/>
   <text x="${width / 2}" y="${2600 * k}" text-anchor="middle" font-family="${theme.font}" font-weight="bold" font-size="${112 * k}" fill="${theme.text}">${escapeXml(poster.title)}</text>
-  ${poster.subtitle ? `<text x="${width / 2}" y="${2695 * k}" text-anchor="middle" font-family="${theme.font}" font-size="${52 * k}" fill="${theme.muted}">${escapeXml(poster.subtitle)}</text>` : ""}
+  ${subtitle ? `<text x="${width / 2}" y="${2695 * k}" text-anchor="middle" font-family="${theme.font}" font-size="${subtitleSize}" fill="${theme.muted}">${escapeXml(subtitle)}</text>` : ""}
 </svg>`,
     p("fg.png")
   );
 
   const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
   await magick([
-    p("bg.png"), p("phone.png"), "-geometry", `${sign(Math.round(poster.x * k))}${sign(Math.round(poster.y * k))}`, "-composite",
+    p("bg.png"), path.join(prepared, "phone.png"), "-geometry", `${sign(Math.round(poster.x * k))}${sign(Math.round(poster.y * k))}`, "-composite",
     p("fg.png"), "-composite",
-    p("logo.png"), "-gravity", "north", "-geometry", `+0+${Math.round(2240 * k)}`, "-composite",
+    path.join(prepared, "logo.png"), "-gravity", "north", "-geometry", `+0+${Math.round(2240 * k)}`, "-composite",
     "-alpha", "off", `PNG24:${out}`,
   ]);
 }
@@ -215,37 +244,70 @@ export function rawDir(screenshots: ScreenshotsConfig): string {
   return path.join(screenshots.dir, "raw");
 }
 
-export function framedDir(config: ShipConfig, screenshots: ScreenshotsConfig): string {
-  return path.join(screenshots.dir, "framed", config.locale);
+const CONCURRENCY = 4;
+
+/** The primary locale plus every translated locale that has its own captions */
+function captionLocales(config: ShipConfig): string[] {
+  return [config.locale, ...Object.keys(config.localizations).filter((l) => config.localizations[l].captions)];
 }
 
-export async function frameScreenshots(config: ShipConfig, screenshots: ScreenshotsConfig): Promise<void> {
+export async function frameScreenshots(
+  config: ShipConfig,
+  screenshots: ScreenshotsConfig,
+  { only }: { only?: string[] } = {}
+): Promise<void> {
   const raws = rawDir(screenshots);
-  const outDir = framedDir(config, screenshots);
   const rawPath = (name: string) => {
     const file = path.join(raws, `${name}.png`);
     if (!fs.existsSync(file)) throw new Error(`Missing raw screenshot ${file}. Run "screenshots capture" first.`);
     return file;
   };
+  const locales = captionLocales(config).filter((l) => !only || only.includes(l));
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ship-frame-"));
   try {
     const bezel = await loadBezel(screenshots.bezel, tmp);
-    fs.rmSync(outDir, { recursive: true, force: true });
-    fs.mkdirSync(outDir, { recursive: true });
-
+    const k = screenshots.size[0] / DESIGN_WIDTH;
+    const devices = new Map<string, string>();
+    for (const shot of screenshots.shots) {
+      if (devices.has(shot.raw)) continue;
+      const device = path.join(tmp, `device-${shot.raw}.png`);
+      const scaled = path.join(tmp, `device-${shot.raw}-scaled.png`);
+      await renderDevice(rawPath(shot.raw), bezel, device, tmp);
+      await magick([device, "-resize", `${Math.round(1060 * k)}x`, scaled]);
+      devices.set(shot.raw, scaled);
+    }
+    const posterDir = path.join(tmp, "poster");
     if (screenshots.poster) {
-      const out = path.join(outDir, "00-poster.png");
-      console.log(chalk.dim(`  → ${path.basename(out)}`));
-      await framePoster(screenshots.poster, rawPath(screenshots.poster.raw), out, bezel, screenshots, tmp);
+      fs.mkdirSync(posterDir);
+      await preparePoster(screenshots.poster, rawPath(screenshots.poster.raw), bezel, screenshots, posterDir);
     }
-    for (const [i, shot] of screenshots.shots.entries()) {
-      const out = path.join(outDir, `${String(i + 1).padStart(2, "0")}-${shot.raw}.png`);
-      console.log(chalk.dim(`  → ${path.basename(out)}`));
-      await frameShot(shot, rawPath(shot.raw), out, bezel, screenshots, tmp);
-    }
+
+    const queue = [...locales];
+    const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      for (let locale = queue.shift(); locale !== undefined; locale = queue.shift()) {
+        const captions = config.localizations[locale]?.captions ?? {};
+        const outDir = path.join(screenshots.dir, "framed", locale);
+        const work = path.join(tmp, locale);
+        fs.rmSync(outDir, { recursive: true, force: true });
+        fs.mkdirSync(outDir, { recursive: true });
+        fs.mkdirSync(work);
+
+        if (screenshots.poster) {
+          const subtitle = captions.poster?.subtitle ?? screenshots.poster.subtitle;
+          await framePoster(screenshots.poster, subtitle, posterDir, path.join(outDir, "00-poster.png"), screenshots, work);
+        }
+        for (const [i, shot] of screenshots.shots.entries()) {
+          const caption = { ...shot, ...captions[shot.raw] };
+          const out = path.join(outDir, `${String(i + 1).padStart(2, "0")}-${shot.raw}.png`);
+          await frameShot(caption, devices.get(shot.raw) ?? "", out, screenshots, work);
+        }
+        console.log(chalk.dim(`  → ${locale}`));
+      }
+    });
+    await Promise.all(workers);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
-  console.log(chalk.green(`  ✓ Framed screenshots → ${outDir}`));
+  console.log(chalk.green(`  ✓ Framed ${locales.length} locale(s) → ${path.join(screenshots.dir, "framed")}`));
 }

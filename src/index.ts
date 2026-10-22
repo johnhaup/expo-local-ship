@@ -46,7 +46,7 @@ async function runStoreCommand(command: StoreCommand, args: string[]): Promise<v
       }
       if (step === "frame" || step === "all") {
         console.log(chalk.blue("\n🖼  Framing"));
-        await frameScreenshots(config, screenshots);
+        await frameScreenshots(config, screenshots, { only: flagValue(args, "--locales")?.split(",") });
       }
       if (step === "upload") await uploadScreenshots(config);
       break;

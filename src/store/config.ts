@@ -22,7 +22,10 @@ export interface ListingConfig {
 /** Per-locale listing text; anything missing falls back to the primary listing */
 export type LocalizedListing = Partial<
   Pick<ListingConfig, "name" | "subtitle" | "promotionalText" | "description" | "keywords" | "releaseNotes">
->;
+> & {
+  /** Screenshot captions keyed by shot raw name, plus "poster" for the poster subtitle */
+  captions?: Record<string, Partial<Pick<ShotConfig, "title" | "subtitle">>>;
+};
 
 export interface TranslateConfig {
   /** App Store locales to fill; defaults to every locale App Store Connect supports */

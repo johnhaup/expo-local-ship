@@ -145,7 +145,7 @@ Everything after the binary upload, driven by a `ship.config.json` in your proje
 | `expo-local-ship metadata` | Uploads name, subtitle, description, keywords, URLs, categories, age rating, review contact, and every translated locale | API key |
 | `expo-local-ship screenshots` | `capture` then `frame` | — |
 | `expo-local-ship screenshots capture [--build]` | Runs your Maestro flow on a simulator and saves raw screenshots | — |
-| `expo-local-ship screenshots frame` | Composites raw screenshots into a device bezel with captions, plus an optional angled-phone poster | — |
+| `expo-local-ship screenshots frame [--locales de-DE,ja]` | Composites raw screenshots into a device bezel with captions, plus an optional angled-phone poster, for the primary locale and every locale with its own captions | — |
 | `expo-local-ship screenshots upload` | Syncs framed screenshots to App Store Connect (replaces what's there) | API key |
 | `expo-local-ship review [--build <n>] [--auto-release]` | Attaches the build (latest by default) and submits for review | API key |
 
@@ -176,7 +176,18 @@ The status bar is set to 9:41 with full signal and battery while capturing. Each
 
 ### Localized listings
 
-`translate` writes one JSON file per locale with `name`, `subtitle`, `promotionalText`, `description`, `keywords` and `releaseNotes`, checked against App Store Connect's character limits. Edit them by hand; reruns only fill missing locales unless you pass `--force`. URLs are shared with the primary listing, and locales without their own screenshots show the primary locale's.
+`translate` writes one JSON file per locale with `name`, `subtitle`, `promotionalText`, `description`, `keywords` and `releaseNotes`, checked against App Store Connect's character limits. Edit them by hand; reruns only fill missing locales unless you pass `--force`. URLs are shared with the primary listing.
+
+Add a `captions` block to a locale file to frame its screenshots with translated text. Keys are shot `raw` names, plus `poster` for the poster subtitle; anything left out uses the primary caption, and lines that are too wide are scaled down to fit:
+
+```json
+"captions": {
+  "poster": { "subtitle": "Rechnungen um jeden Zahltag planen" },
+  "paychecks": { "title": ["Wissen, was bleibt", "nach jedem Zahltag"], "subtitle": "…" }
+}
+```
+
+Locales without captions show the primary locale's screenshots.
 
 ### `ship.config.json`
 

@@ -60,7 +60,7 @@ const LOCALE_NAMES: Record<string, string> = {
 };
 
 /** App Store Connect field limits, in characters */
-const LIMITS: Record<keyof LocalizedListing, number> = {
+const LIMITS: Record<Exclude<keyof LocalizedListing, "captions">, number> = {
   name: 30,
   subtitle: 30,
   promotionalText: 170,
@@ -171,7 +171,8 @@ export async function translateListing(
   await inBatches(pending, CONCURRENCY, async (locale) => {
     try {
       const listing = await translateLocale(client, config, locale);
-      fs.writeFileSync(path.join(translate.dir, `${locale}.json`), JSON.stringify(listing, null, 2) + "\n");
+      const merged = { ...config.localizations[locale], ...listing };
+      fs.writeFileSync(path.join(translate.dir, `${locale}.json`), JSON.stringify(merged, null, 2) + "\n");
       console.log(chalk.dim(`  ✓ ${locale.padEnd(8)} ${listing.name} — ${listing.subtitle}`));
     } catch (err) {
       failed.push(locale);
