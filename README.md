@@ -212,6 +212,8 @@ Locales without captions show the primary locale's screenshots.
   "review": { "firstName": "…", "lastName": "…", "phone": "…", "email": "…", "notes": "…" },
   // App Store Connect ageRatingDeclaration attributes
   "ageRating": { "violenceRealistic": "NONE", "unrestrictedWebAccess": false },
+  // "Does your app contain, show, or access third-party content?" (required before review)
+  "usesThirdPartyContent": false,
   // fastlane app privacy JSON
   "privacy": [{ "data_protections": ["DATA_NOT_COLLECTED"] }],
   "screenshots": {

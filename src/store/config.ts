@@ -98,6 +98,8 @@ export interface ShipConfig {
   review?: ReviewConfig;
   /** App Store Connect age rating declaration, keyed by API attribute name */
   ageRating?: Record<string, string | boolean>;
+  /** Answer to "Does your app contain, show, or access third-party content?" */
+  usesThirdPartyContent?: boolean;
   /** fastlane app privacy JSON; [{ "data_protections": ["DATA_NOT_COLLECTED"] }] when nothing is collected */
   privacy?: unknown[];
   screenshots?: ScreenshotsConfig;
@@ -198,6 +200,7 @@ export function loadShipConfig(cwd: string): ShipConfig {
     translate,
     review: raw.review,
     ageRating: raw.ageRating,
+    usesThirdPartyContent: raw.usesThirdPartyContent,
     privacy: raw.privacy,
     screenshots,
   };

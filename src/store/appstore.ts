@@ -7,6 +7,7 @@ import { run } from "../exec";
 import { loadAscConfig } from "../submit";
 import type { ShipConfig } from "./config";
 import { requireScreenshots } from "./config";
+import { setContentRights } from "./connectApi";
 
 export function apiKeyPath(keyId: string): string {
   return path.join(os.homedir(), ".appstoreconnect", "private_keys", `AuthKey_${keyId}.p8`);
@@ -102,6 +103,9 @@ export function pushMetadata(config: ShipConfig): Promise<void> {
         args.push("--app_rating_config_path", ratingFile);
       }
       await deliver(config, keyFile, args);
+      if (config.usesThirdPartyContent !== undefined) {
+        await setContentRights(config.bundleId, config.usesThirdPartyContent);
+      }
       console.log(chalk.green("  ✓ Metadata uploaded"));
     })
   );
@@ -131,7 +135,11 @@ export function submitForReview(
   { buildNumber, autoRelease }: { buildNumber?: string; autoRelease: boolean }
 ): Promise<void> {
   console.log(chalk.blue(`\n🧑‍⚖️ Submitting ${config.version} (${buildNumber ?? "latest build"}) for review`));
+  if (config.usesThirdPartyContent === undefined) {
+    throw new Error('Set "usesThirdPartyContent" in ship.config.json; App Review requires the content rights answer');
+  }
   return withApiKey(async (keyFile) => {
+    await setContentRights(config.bundleId, config.usesThirdPartyContent ?? false);
     await deliver(config, keyFile, [
       "--skip_metadata", "true",
       "--skip_screenshots", "true",
