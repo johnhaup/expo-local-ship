@@ -61,17 +61,21 @@ function writeMetadata(config: ShipConfig, dir: string): void {
     fs.writeFileSync(file, value.trim() + "\n");
   };
   const { listing, review } = config;
-  const localeDir = path.join(dir, config.locale);
+  const locales = { [config.locale]: {}, ...config.localizations };
 
-  write(path.join(localeDir, "name.txt"), listing.name);
-  write(path.join(localeDir, "subtitle.txt"), listing.subtitle);
-  write(path.join(localeDir, "description.txt"), listing.description);
-  write(path.join(localeDir, "keywords.txt"), listing.keywords);
-  write(path.join(localeDir, "promotional_text.txt"), listing.promotionalText);
-  write(path.join(localeDir, "release_notes.txt"), listing.releaseNotes);
-  write(path.join(localeDir, "support_url.txt"), listing.supportUrl);
-  write(path.join(localeDir, "marketing_url.txt"), listing.marketingUrl);
-  write(path.join(localeDir, "privacy_url.txt"), listing.privacyUrl);
+  for (const [locale, localized] of Object.entries(locales)) {
+    const text = { ...listing, ...localized };
+    const localeDir = path.join(dir, locale);
+    write(path.join(localeDir, "name.txt"), text.name);
+    write(path.join(localeDir, "subtitle.txt"), text.subtitle);
+    write(path.join(localeDir, "description.txt"), text.description);
+    write(path.join(localeDir, "keywords.txt"), text.keywords);
+    write(path.join(localeDir, "promotional_text.txt"), text.promotionalText);
+    write(path.join(localeDir, "release_notes.txt"), text.releaseNotes);
+    write(path.join(localeDir, "support_url.txt"), listing.supportUrl);
+    write(path.join(localeDir, "marketing_url.txt"), listing.marketingUrl);
+    write(path.join(localeDir, "privacy_url.txt"), listing.privacyUrl);
+  }
   write(path.join(dir, "copyright.txt"), listing.copyright);
   write(path.join(dir, "primary_category.txt"), listing.primaryCategory);
   write(path.join(dir, "secondary_category.txt"), listing.secondaryCategory);
@@ -85,7 +89,8 @@ function writeMetadata(config: ShipConfig, dir: string): void {
 }
 
 export function pushMetadata(config: ShipConfig): Promise<void> {
-  console.log(chalk.blue("\n📝 Uploading listing metadata"));
+  const count = Object.keys(config.localizations).length + 1;
+  console.log(chalk.blue(`\n📝 Uploading listing metadata (${count} ${count === 1 ? "locale" : "locales"})`));
   return withApiKey((keyFile) =>
     withTempDir("ship-metadata-", async (dir) => {
       const metadataDir = path.join(dir, "metadata");

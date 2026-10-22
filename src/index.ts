@@ -9,8 +9,9 @@ import { captureScreenshots } from "./store/capture";
 import { loadShipConfig, requireScreenshots } from "./store/config";
 import { runDoctor } from "./store/doctor";
 import { frameScreenshots } from "./store/frame";
+import { translateListing } from "./store/translate";
 
-const STORE_COMMANDS = ["screenshots", "metadata", "review", "create", "privacy", "doctor"] as const;
+const STORE_COMMANDS = ["screenshots", "metadata", "translate", "review", "create", "privacy", "doctor"] as const;
 type StoreCommand = (typeof STORE_COMMANDS)[number];
 const SCREENSHOT_STEPS = ["capture", "frame", "upload", "all"];
 
@@ -52,6 +53,12 @@ async function runStoreCommand(command: StoreCommand, args: string[]): Promise<v
     }
     case "metadata":
       await pushMetadata(config);
+      break;
+    case "translate":
+      await translateListing(config, {
+        force: args.includes("--force"),
+        only: flagValue(args, "--locales")?.split(","),
+      });
       break;
     case "review":
       await submitForReview(config, {

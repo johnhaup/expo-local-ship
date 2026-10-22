@@ -141,7 +141,8 @@ Everything after the binary upload, driven by a `ship.config.json` in your proje
 | `expo-local-ship doctor` | Checks tools, API key, and config | — |
 | `expo-local-ship create` | Creates the app record in App Store Connect (`fastlane produce`) | Apple ID, once per app |
 | `expo-local-ship privacy` | Publishes App Privacy answers | Apple ID, once per app |
-| `expo-local-ship metadata` | Uploads name, subtitle, description, keywords, URLs, categories, age rating, review contact | API key |
+| `expo-local-ship translate [--force] [--locales de-DE,ja]` | Localizes the listing with Claude into every App Store locale, one `ship/listing/<locale>.json` each; skips locales already done | `ANTHROPIC_API_KEY` |
+| `expo-local-ship metadata` | Uploads name, subtitle, description, keywords, URLs, categories, age rating, review contact, and every translated locale | API key |
 | `expo-local-ship screenshots` | `capture` then `frame` | — |
 | `expo-local-ship screenshots capture [--build]` | Runs your Maestro flow on a simulator and saves raw screenshots | — |
 | `expo-local-ship screenshots frame` | Composites raw screenshots into a device bezel with captions, plus an optional angled-phone poster | — |
@@ -173,6 +174,10 @@ export default function DemoScreen() {
 
 The status bar is set to 9:41 with full signal and battery while capturing. Each `takeScreenshot: <name>` in the flow becomes `<dir>/raw/<name>.png`.
 
+### Localized listings
+
+`translate` writes one JSON file per locale with `name`, `subtitle`, `promotionalText`, `description`, `keywords` and `releaseNotes`, checked against App Store Connect's character limits. Edit them by hand; reruns only fill missing locales unless you pass `--force`. URLs are shared with the primary listing, and locales without their own screenshots show the primary locale's.
+
 ### `ship.config.json`
 
 ```jsonc
@@ -191,6 +196,8 @@ The status bar is set to 9:41 with full signal and battery while capturing. Each
     "primaryCategory": "FINANCE",
     "secondaryCategory": "PRODUCTIVITY"
   },
+  // optional: defaults to every App Store locale, Claude Opus 5.5, and ship/listing
+  "translate": { "keep": ["My App"], "locales": ["de-DE", "ja"], "model": "claude-opus-5-5", "dir": "ship/listing" },
   "review": { "firstName": "…", "lastName": "…", "phone": "…", "email": "…", "notes": "…" },
   // App Store Connect ageRatingDeclaration attributes
   "ageRating": { "violenceRealistic": "NONE", "unrestrictedWebAccess": false },
@@ -224,6 +231,7 @@ Suggested scripts:
 ```json
 {
   "store:doctor": "expo-local-ship doctor",
+  "store:translate": "expo-local-ship translate",
   "store:metadata": "expo-local-ship metadata",
   "store:screenshots": "expo-local-ship screenshots",
   "store:screenshots:upload": "expo-local-ship screenshots upload",
