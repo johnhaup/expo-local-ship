@@ -9,6 +9,7 @@ import { captureScreenshots } from "./store/capture";
 import { loadShipConfig, requireScreenshots } from "./store/config";
 import { runDoctor } from "./store/doctor";
 import { frameScreenshots } from "./store/frame";
+import { pushPlayMetadata } from "./store/googlePlay";
 
 const STORE_COMMANDS = ["screenshots", "metadata", "review", "create", "privacy", "doctor"] as const;
 type StoreCommand = (typeof STORE_COMMANDS)[number];
@@ -51,7 +52,8 @@ async function runStoreCommand(command: StoreCommand, args: string[]): Promise<v
       break;
     }
     case "metadata":
-      await pushMetadata(config);
+      if (args.includes("--android")) await pushPlayMetadata(config);
+      else await pushMetadata(config);
       break;
     case "review":
       await submitForReview(config, {

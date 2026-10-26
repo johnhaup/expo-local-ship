@@ -92,9 +92,17 @@ export interface ShipConfig {
   /** fastlane app privacy JSON; [{ "data_protections": ["DATA_NOT_COLLECTED"] }] when nothing is collected */
   privacy?: unknown[];
   screenshots?: ScreenshotsConfig;
+  /** android.package from app.json */
+  androidPackage?: string;
+  googlePlay?: GooglePlayConfig;
 }
 
-type RawConfig = Partial<Omit<ShipConfig, "screenshots" | "cwd" | "localizations">> & {
+export interface GooglePlayConfig {
+  /** Public contact email on the Play listing */
+  contactEmail?: string;
+}
+
+type RawConfig = Partial<Omit<ShipConfig, "screenshots" | "cwd" | "localizations" | "androidPackage">> & {
   /** Folder holding one <locale>.json per localized listing */
   listingDir?: string;
   screenshots?: Partial<Omit<ScreenshotsConfig, "theme" | "poster">> & {
@@ -140,7 +148,9 @@ export function loadShipConfig(cwd: string): ShipConfig {
     throw new Error(`${CONFIG_FILE} needs listing.name and listing.description`);
   }
 
-  const appJson = readJson<{ expo?: { version?: string; ios?: { bundleIdentifier?: string } } }>(
+  const appJson = readJson<{
+    expo?: { version?: string; ios?: { bundleIdentifier?: string }; android?: { package?: string } };
+  }>(
     path.join(cwd, "app.json")
   );
   const bundleId = raw.bundleId ?? appJson?.expo?.ios?.bundleIdentifier;
@@ -177,6 +187,8 @@ export function loadShipConfig(cwd: string): ShipConfig {
     usesThirdPartyContent: raw.usesThirdPartyContent,
     privacy: raw.privacy,
     screenshots,
+    androidPackage: appJson?.expo?.android?.package,
+    googlePlay: raw.googlePlay,
   };
 }
 
