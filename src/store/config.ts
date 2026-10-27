@@ -75,6 +75,16 @@ export interface ScreenshotsConfig {
   theme: ThemeConfig;
   shots: ShotConfig[];
   poster?: PosterConfig;
+  /** Which store these are framed for; Android skips the poster and renders Play's graphics instead */
+  platform: "ios" | "android";
+  android: AndroidScreenshotsConfig;
+}
+
+export interface AndroidScreenshotsConfig {
+  /** AVD name; defaults to the first one the emulator lists */
+  emulator?: string;
+  /** Play allows at most 2:1, so the phone runs off the bottom edge */
+  size: [number, number];
 }
 
 export interface ShipConfig {
@@ -105,8 +115,9 @@ export interface GooglePlayConfig {
 type RawConfig = Partial<Omit<ShipConfig, "screenshots" | "cwd" | "localizations" | "androidPackage">> & {
   /** Folder holding one <locale>.json per localized listing */
   listingDir?: string;
-  screenshots?: Partial<Omit<ScreenshotsConfig, "theme" | "poster">> & {
+  screenshots?: Partial<Omit<ScreenshotsConfig, "theme" | "poster" | "android" | "platform">> & {
     theme?: Partial<ThemeConfig>;
+    android?: Partial<AndroidScreenshotsConfig>;
     poster?: Partial<PosterConfig> & Pick<PosterConfig, "raw" | "icon" | "title">;
   };
 };
@@ -172,6 +183,8 @@ export function loadShipConfig(cwd: string): ShipConfig {
       ...shots.poster,
       icon: expandPath(shots.poster.icon, cwd),
     },
+    platform: "ios",
+    android: { size: [1320, 2640], ...shots.android },
   };
 
   const locale = raw.locale ?? "en-US";
@@ -189,6 +202,21 @@ export function loadShipConfig(cwd: string): ShipConfig {
     screenshots,
     androidPackage: appJson?.expo?.android?.package,
     googlePlay: raw.googlePlay,
+  };
+}
+
+/**
+ * The same shots and captions for Google Play, kept under <dir>/android. An empty bezel makes
+ * the framer draw a plain phone outline.
+ */
+export function forAndroid(screenshots: ScreenshotsConfig): ScreenshotsConfig {
+  return {
+    ...screenshots,
+    simulator: screenshots.android.emulator ?? "",
+    dir: path.join(screenshots.dir, "android"),
+    bezel: "",
+    size: screenshots.android.size,
+    platform: "android",
   };
 }
 

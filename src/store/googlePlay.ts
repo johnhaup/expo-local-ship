@@ -2,7 +2,8 @@ import chalk from "chalk";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import type { ShipConfig } from "./config";
+import type { ScreenshotsConfig, ShipConfig } from "./config";
+import { PLAY_FEATURE_GRAPHIC, PLAY_ICON } from "./frame";
 
 const BASE_URL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
 
@@ -106,6 +107,12 @@ class PlayEdit {
     return request(this.token, method, `${this.base}/${this.id}${route}`, body);
   }
 
+  /** Images go to the separate upload endpoint as the raw file body */
+  upload(route: string, file: string): Promise<unknown> {
+    const base = this.base.replace("/androidpublisher/v3/", "/upload/androidpublisher/v3/");
+    return request(this.token, "POST", `${base}/${this.id}${route}?uploadType=media`, fs.readFileSync(file));
+  }
+
   async commit(): Promise<void> {
     try {
       await this.request("POST", ":commit");
@@ -117,11 +124,12 @@ class PlayEdit {
   }
 }
 
-async function request<T>(token: string, method: string, url: string, body?: object): Promise<T> {
+async function request<T>(token: string, method: string, url: string, body?: object | Buffer): Promise<T> {
+  const image = Buffer.isBuffer(body);
   const response = await fetch(url, {
     method,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: body && JSON.stringify(body),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": image ? "image/png" : "application/json" },
+    body: image ? new Uint8Array(body) : body && JSON.stringify(body),
   });
   const json = response.status === 204 ? {} : await response.json();
   if (!response.ok) {
@@ -176,4 +184,47 @@ export async function pushPlayMetadata(config: ShipConfig): Promise<void> {
   await edit.commit();
   console.log(chalk.green(`  ✓ ${locales.length - skipped.length} listings committed`));
   for (const line of skipped) console.log(chalk.yellow(`  ⚠ skipped ${line}`));
+}
+
+/**
+ * Replaces the phone screenshots in every framed locale, plus the icon and feature graphic on the
+ * default listing (other languages fall back to it). Expects "screenshots frame --android" output.
+ */
+export async function uploadPlayImages(config: ShipConfig, screenshots: ScreenshotsConfig): Promise<void> {
+  const packageName = requirePackage(config);
+  const framedRoot = path.join(screenshots.dir, "framed");
+  if (!fs.existsSync(path.join(framedRoot, config.locale))) {
+    throw new Error(`No framed screenshots in ${framedRoot}. Run "screenshots frame --android" first.`);
+  }
+  console.log(chalk.blue(`\n🖼  Google Play images · ${packageName}`));
+  const edit = await PlayEdit.open(config.cwd, packageName);
+
+  const defaultLanguage = PLAY_LOCALES[config.locale] ?? config.locale;
+  for (const [type, file] of [["icon", PLAY_ICON], ["featureGraphic", PLAY_FEATURE_GRAPHIC]]) {
+    const image = path.join(screenshots.dir, file);
+    if (!fs.existsSync(image)) throw new Error(`Missing ${image}. Run "screenshots frame --android" first.`);
+    await edit.request("DELETE", `/listings/${defaultLanguage}/${type}`);
+    await edit.upload(`/listings/${defaultLanguage}/${type}`, image);
+  }
+  console.log(chalk.dim(`  ✓ icon and feature graphic (${defaultLanguage})`));
+
+  const skipped: string[] = [];
+  for (const locale of fs.readdirSync(framedRoot).sort()) {
+    const language = PLAY_LOCALES[locale] ?? locale;
+    const shots = fs.readdirSync(path.join(framedRoot, locale)).filter((f) => f.endsWith(".png")).sort();
+    try {
+      await edit.request("DELETE", `/listings/${language}/phoneScreenshots`);
+    } catch (error) {
+      // No listing in this language (Play doesn't support it, or metadata hasn't been pushed)
+      if (!(error instanceof PlayError) || ![400, 404].includes(error.status)) throw error;
+      skipped.push(`${locale} (${language})`);
+      continue;
+    }
+    for (const shot of shots) await edit.upload(`/listings/${language}/phoneScreenshots`, path.join(framedRoot, locale, shot));
+    console.log(chalk.dim(`  ✓ ${language}: ${shots.length}`));
+  }
+
+  await edit.commit();
+  console.log(chalk.green("  ✓ Images committed"));
+  if (skipped.length) console.log(chalk.yellow(`  ⚠ skipped ${skipped.join(", ")}`));
 }

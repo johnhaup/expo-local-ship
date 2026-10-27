@@ -5,11 +5,11 @@ import { runSetup } from "./setup";
 import { openTransporter, submitAltool, submitEas } from "./submit";
 import { validate } from "./validate";
 import { createApp, pushMetadata, submitForReview, uploadPrivacy, uploadScreenshots } from "./store/appstore";
-import { captureScreenshots } from "./store/capture";
-import { loadShipConfig, requireScreenshots } from "./store/config";
+import { captureAndroidScreenshots, captureScreenshots } from "./store/capture";
+import { forAndroid, loadShipConfig, requireScreenshots } from "./store/config";
 import { runDoctor } from "./store/doctor";
 import { frameScreenshots } from "./store/frame";
-import { pushPlayMetadata } from "./store/googlePlay";
+import { pushPlayMetadata, uploadPlayImages } from "./store/googlePlay";
 
 const STORE_COMMANDS = ["screenshots", "metadata", "review", "create", "privacy", "doctor"] as const;
 type StoreCommand = (typeof STORE_COMMANDS)[number];
@@ -40,15 +40,20 @@ async function runStoreCommand(command: StoreCommand, args: string[]): Promise<v
       if (!SCREENSHOT_STEPS.includes(step)) {
         throw new Error(`Unknown step "${step}". Use capture, frame, upload, or omit for capture + frame.`);
       }
-      const screenshots = requireScreenshots(config);
+      const android = args.includes("--android");
+      const screenshots = android ? forAndroid(requireScreenshots(config)) : requireScreenshots(config);
       if (step === "capture" || step === "all") {
-        await captureScreenshots(config, screenshots, { build: args.includes("--build") });
+        const capture = android ? captureAndroidScreenshots : captureScreenshots;
+        await capture(config, screenshots, { build: args.includes("--build") });
       }
       if (step === "frame" || step === "all") {
         console.log(chalk.blue("\n🖼  Framing"));
         await frameScreenshots(config, screenshots, { only: flagValue(args, "--locales")?.split(",") });
       }
-      if (step === "upload") await uploadScreenshots(config);
+      if (step === "upload") {
+        if (android) await uploadPlayImages(config, screenshots);
+        else await uploadScreenshots(config);
+      }
       break;
     }
     case "metadata":
