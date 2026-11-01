@@ -75,6 +75,16 @@ export interface ScreenshotsConfig {
   theme: ThemeConfig;
   shots: ShotConfig[];
   poster?: PosterConfig;
+  /** Which store these are framed for; Android skips the poster and renders Play's graphics instead */
+  platform: "ios" | "android";
+  android: AndroidScreenshotsConfig;
+}
+
+export interface AndroidScreenshotsConfig {
+  /** AVD name; defaults to the first one the emulator lists */
+  emulator?: string;
+  /** Play allows at most 2:1, so the phone runs off the bottom edge */
+  size: [number, number];
 }
 
 export interface ShipConfig {
@@ -92,13 +102,22 @@ export interface ShipConfig {
   /** fastlane app privacy JSON; [{ "data_protections": ["DATA_NOT_COLLECTED"] }] when nothing is collected */
   privacy?: unknown[];
   screenshots?: ScreenshotsConfig;
+  /** android.package from app.json */
+  androidPackage?: string;
+  googlePlay?: GooglePlayConfig;
 }
 
-type RawConfig = Partial<Omit<ShipConfig, "screenshots" | "cwd" | "localizations">> & {
+export interface GooglePlayConfig {
+  /** Public contact email on the Play listing */
+  contactEmail?: string;
+}
+
+type RawConfig = Partial<Omit<ShipConfig, "screenshots" | "cwd" | "localizations" | "androidPackage">> & {
   /** Folder holding one <locale>.json per localized listing */
   listingDir?: string;
-  screenshots?: Partial<Omit<ScreenshotsConfig, "theme" | "poster">> & {
+  screenshots?: Partial<Omit<ScreenshotsConfig, "theme" | "poster" | "android" | "platform">> & {
     theme?: Partial<ThemeConfig>;
+    android?: Partial<AndroidScreenshotsConfig>;
     poster?: Partial<PosterConfig> & Pick<PosterConfig, "raw" | "icon" | "title">;
   };
 };
@@ -133,6 +152,21 @@ function loadLocalizations(dir: string): Record<string, LocalizedListing> {
   );
 }
 
+/**
+ * Release notes for one version: ship/release-notes/<version>.json, { "en-US": "…", "de-DE": "…" }.
+ * Returns undefined when the file is absent; throws when it exists but has no entry for the default locale.
+ */
+export function loadReleaseNotes(config: ShipConfig): Record<string, string> | undefined {
+  const file = path.join(config.cwd, "ship", "release-notes", `${config.version}.json`);
+  const notes = readJson<Record<string, string>>(file);
+  if (!notes) return undefined;
+  if (!notes[config.locale]?.trim()) throw new Error(`${file} has no release notes for ${config.locale}`);
+  for (const [locale, text] of Object.entries(notes)) {
+    if (text.length > 4000) throw new Error(`Release notes for ${locale} are ${text.length} chars; App Store Connect allows 4000`);
+  }
+  return notes;
+}
+
 export function loadShipConfig(cwd: string): ShipConfig {
   const raw = readJson<RawConfig>(path.join(cwd, CONFIG_FILE));
   if (!raw) throw new Error(`No ${CONFIG_FILE} found in ${cwd}`);
@@ -140,7 +174,9 @@ export function loadShipConfig(cwd: string): ShipConfig {
     throw new Error(`${CONFIG_FILE} needs listing.name and listing.description`);
   }
 
-  const appJson = readJson<{ expo?: { version?: string; ios?: { bundleIdentifier?: string } } }>(
+  const appJson = readJson<{
+    expo?: { version?: string; ios?: { bundleIdentifier?: string }; android?: { package?: string } };
+  }>(
     path.join(cwd, "app.json")
   );
   const bundleId = raw.bundleId ?? appJson?.expo?.ios?.bundleIdentifier;
@@ -162,6 +198,8 @@ export function loadShipConfig(cwd: string): ShipConfig {
       ...shots.poster,
       icon: expandPath(shots.poster.icon, cwd),
     },
+    platform: "ios",
+    android: { size: [1320, 2640], ...shots.android },
   };
 
   const locale = raw.locale ?? "en-US";
@@ -177,6 +215,23 @@ export function loadShipConfig(cwd: string): ShipConfig {
     usesThirdPartyContent: raw.usesThirdPartyContent,
     privacy: raw.privacy,
     screenshots,
+    androidPackage: appJson?.expo?.android?.package,
+    googlePlay: raw.googlePlay,
+  };
+}
+
+/**
+ * The same shots and captions for Google Play, kept under <dir>/android. An empty bezel makes
+ * the framer draw a plain phone outline.
+ */
+export function forAndroid(screenshots: ScreenshotsConfig): ScreenshotsConfig {
+  return {
+    ...screenshots,
+    simulator: screenshots.android.emulator ?? "",
+    dir: path.join(screenshots.dir, "android"),
+    bezel: "",
+    size: screenshots.android.size,
+    platform: "android",
   };
 }
 

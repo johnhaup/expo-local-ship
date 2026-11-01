@@ -52,6 +52,24 @@ async function loadBezel(bezelPath: string, tmp: string): Promise<Bezel> {
   return { path: bezelPath, width, height, hole: { w, h, x, y }, mask };
 }
 
+/** A plain dark phone outline around a screen the size of the raw shot, for devices with no bezel art */
+async function drawPhoneBezel(rawPath: string, tmp: string): Promise<string> {
+  const [w, h] = (await capture("magick", ["identify", "-format", "%w %h", rawPath])).split(" ").map(Number);
+  const t = Math.round(w * 0.035);
+  const [width, height] = [w + 2 * t, h + 2 * t];
+  const outer = Math.round(w * 0.11);
+  const out = path.join(tmp, "phone-bezel.png");
+  await renderSvg(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+  <defs><mask id="screen"><rect width="${width}" height="${height}" fill="#fff"/><rect x="${t}" y="${t}" width="${w}" height="${h}" rx="${outer - t}" fill="#000"/></mask></defs>
+  <rect x="2" y="2" width="${width - 4}" height="${height - 4}" rx="${outer}" fill="#141518" stroke="#3b3e44" stroke-width="4" mask="url(#screen)"/>
+  <circle cx="${width / 2}" cy="${t + Math.round(w * 0.04)}" r="${Math.round(w * 0.018)}" fill="#050505"/>
+</svg>`,
+    out
+  );
+  return out;
+}
+
 async function renderDevice(rawPath: string, bezel: Bezel, out: string, tmp: string): Promise<void> {
   const { w, h, x, y } = bezel.hole;
   const screenRaw = path.join(tmp, "screen-raw.png");
@@ -250,6 +268,43 @@ async function framePoster(
   ]);
 }
 
+export const PLAY_ICON = "icon-512.png";
+export const PLAY_FEATURE_GRAPHIC = "feature-graphic.png";
+
+/** Play's 512px icon and 1024x500 feature graphic (icon, title and subtitle on the theme background) */
+async function renderPlayGraphics(poster: PosterConfig, screenshots: ScreenshotsConfig, tmp: string): Promise<void> {
+  const { theme } = screenshots;
+  fs.mkdirSync(screenshots.dir, { recursive: true });
+  await magick([poster.icon, "-resize", "512x512", "-alpha", "off", `PNG24:${path.join(screenshots.dir, PLAY_ICON)}`]);
+
+  const [width, height] = [1024, 500];
+  const logo = 260;
+  const textX = 110 + logo + 60;
+  const maxWidth = width - textX - 60;
+  const titleSize = await fitFontSize(poster.title, 76, true, maxWidth, theme.font, tmp);
+  const subtitleSize = poster.subtitle ? await fitFontSize(poster.subtitle, 34, false, maxWidth, theme.font, tmp) : 0;
+  const bg = path.join(tmp, "feature-bg.png");
+  await renderSvg(
+    backgroundSvg(width, height, theme, 0.5, 0.25).replace(
+      "</svg>",
+      `  <text x="${textX}" y="${height / 2 + (poster.subtitle ? 6 : 26)}" font-family="${theme.font}" font-weight="bold" font-size="${titleSize}" fill="${theme.text}">${escapeXml(poster.title)}</text>
+  ${poster.subtitle ? `<text x="${textX}" y="${height / 2 + 62}" font-family="${theme.font}" font-size="${subtitleSize}" fill="${theme.muted}">${escapeXml(poster.subtitle)}</text>` : ""}
+</svg>`
+    ),
+    bg
+  );
+  const radius = 58;
+  await magick([
+    bg,
+    "(", poster.icon, "-resize", `${logo}x${logo}`,
+    "(", "-size", `${logo}x${logo}`, "xc:none", "-fill", "white",
+    "-draw", `roundrectangle 0,0 ${logo - 1},${logo - 1} ${radius},${radius}`, ")",
+    "-alpha", "set", "-compose", "DstIn", "-composite", ")",
+    "-compose", "Over", "-geometry", `+110+${(height - logo) / 2}`, "-composite",
+    "-alpha", "off", `PNG24:${path.join(screenshots.dir, PLAY_FEATURE_GRAPHIC)}`,
+  ]);
+}
+
 export function rawDir(screenshots: ScreenshotsConfig): string {
   return path.join(screenshots.dir, "raw");
 }
@@ -276,7 +331,8 @@ export async function frameScreenshots(
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ship-frame-"));
   try {
-    const bezel = await loadBezel(screenshots.bezel, tmp);
+    const bezelPath = screenshots.bezel || (await drawPhoneBezel(rawPath(screenshots.shots[0].raw), tmp));
+    const bezel = await loadBezel(bezelPath, tmp);
     const k = screenshots.size[0] / DESIGN_WIDTH;
     const devices = new Map<string, string>();
     for (const shot of screenshots.shots) {
@@ -288,9 +344,13 @@ export async function frameScreenshots(
       devices.set(shot.raw, scaled);
     }
     const posterDir = path.join(tmp, "poster");
-    if (screenshots.poster) {
+    const poster = screenshots.platform === "ios" ? screenshots.poster : undefined;
+    if (screenshots.platform === "android" && screenshots.poster) {
+      await renderPlayGraphics(screenshots.poster, screenshots, tmp);
+    }
+    if (poster) {
       fs.mkdirSync(posterDir);
-      await preparePoster(screenshots.poster, rawPath(screenshots.poster.raw), bezel, screenshots, posterDir);
+      await preparePoster(poster, rawPath(poster.raw), bezel, screenshots, posterDir);
     }
 
     const queue = [...locales];
@@ -303,9 +363,9 @@ export async function frameScreenshots(
         fs.mkdirSync(outDir, { recursive: true });
         fs.mkdirSync(work);
 
-        if (screenshots.poster) {
-          const subtitle = captions.poster?.subtitle ?? screenshots.poster.subtitle;
-          await framePoster(screenshots.poster, subtitle, locale, posterDir, path.join(outDir, "00-poster.png"), screenshots, work);
+        if (poster) {
+          const subtitle = captions.poster?.subtitle ?? poster.subtitle;
+          await framePoster(poster, subtitle, locale, posterDir, path.join(outDir, "00-poster.png"), screenshots, work);
         }
         for (const [i, shot] of screenshots.shots.entries()) {
           const caption = { ...shot, ...captions[shot.raw] };
