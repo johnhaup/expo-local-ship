@@ -6,7 +6,7 @@ import path from "path";
 import { run } from "../exec";
 import { loadAscConfig } from "../submit";
 import type { ShipConfig } from "./config";
-import { requireScreenshots } from "./config";
+import { loadReleaseNotes, requireScreenshots } from "./config";
 import { setContentRights } from "./connectApi";
 
 export function apiKeyPath(keyId: string): string {
@@ -138,18 +138,49 @@ export function submitForReview(
   if (config.usesThirdPartyContent === undefined) {
     throw new Error('Set "usesThirdPartyContent" in ship.config.json; App Review requires the content rights answer');
   }
+  const notes = loadReleaseNotes(config);
+  if (notes) console.log(chalk.dim(`  with release notes for ${Object.keys(notes).length} locales`));
+  else console.log(chalk.yellow(`  no ship/release-notes/${config.version}.json; "What's New" is left as it is in App Store Connect`));
   return withApiKey(async (keyFile) => {
     await setContentRights(config.bundleId, config.usesThirdPartyContent ?? false);
-    await deliver(config, keyFile, [
-      "--skip_metadata", "true",
-      "--skip_screenshots", "true",
-      "--submit_for_review", "true",
+    await withTempDir("ship-notes-", async (dir) => {
+      const metadataDir = path.join(dir, "metadata");
+      if (notes) writeReleaseNotes(notes, metadataDir);
+      await deliver(config, keyFile, [
+        ...(notes ? ["--metadata_path", metadataDir] : ["--skip_metadata", "true"]),
+        "--skip_screenshots", "true",
+        "--submit_for_review", "true",
       "--automatic_release", String(autoRelease),
-      "--submission_information", JSON.stringify({ add_id_info_uses_idfa: false }),
-      ...(buildNumber ? ["--build_number", buildNumber] : []),
-    ]);
+        "--submission_information", JSON.stringify({ add_id_info_uses_idfa: false }),
+        ...(buildNumber ? ["--build_number", buildNumber] : []),
+      ]);
+    });
     console.log(chalk.green("  ✓ Submitted for review"));
   });
+}
+
+/** Only release_notes.txt per locale, so deliver touches nothing else on the listing */
+function writeReleaseNotes(notes: Record<string, string>, dir: string): void {
+  for (const [locale, text] of Object.entries(notes)) {
+    const localeDir = path.join(dir, locale);
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(path.join(localeDir, "release_notes.txt"), text.trim() + "\n");
+  }
+}
+
+/** Upload "What's New" for the current version from ship/release-notes/<version>.json without submitting */
+export function pushReleaseNotes(config: ShipConfig): Promise<void> {
+  const notes = loadReleaseNotes(config);
+  if (!notes) throw new Error(`No ship/release-notes/${config.version}.json`);
+  console.log(chalk.blue(`\n📝 Uploading release notes for ${config.version} (${Object.keys(notes).length} locales)`));
+  return withApiKey((keyFile) =>
+    withTempDir("ship-notes-", async (dir) => {
+      const metadataDir = path.join(dir, "metadata");
+      writeReleaseNotes(notes, metadataDir);
+      await deliver(config, keyFile, ["--metadata_path", metadataDir, "--skip_screenshots", "true"]);
+      console.log(chalk.green("  ✓ Release notes uploaded"));
+    })
+  );
 }
 
 async function promptAppleId(): Promise<string> {

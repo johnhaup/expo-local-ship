@@ -4,14 +4,14 @@ import { buildPlatform, type Platform } from "./build";
 import { runSetup } from "./setup";
 import { openTransporter, submitAltool, submitEas } from "./submit";
 import { validate } from "./validate";
-import { createApp, pushMetadata, submitForReview, uploadPrivacy, uploadScreenshots } from "./store/appstore";
+import { createApp, pushMetadata, pushReleaseNotes, submitForReview, uploadPrivacy, uploadScreenshots } from "./store/appstore";
 import { captureAndroidScreenshots, captureScreenshots } from "./store/capture";
 import { forAndroid, loadShipConfig, requireScreenshots } from "./store/config";
 import { runDoctor } from "./store/doctor";
 import { frameScreenshots } from "./store/frame";
 import { pushPlayMetadata, uploadPlayImages } from "./store/googlePlay";
 
-const STORE_COMMANDS = ["screenshots", "metadata", "review", "create", "privacy", "doctor"] as const;
+const STORE_COMMANDS = ["screenshots", "metadata", "release-notes", "review", "create", "privacy", "doctor"] as const;
 type StoreCommand = (typeof STORE_COMMANDS)[number];
 const SCREENSHOT_STEPS = ["capture", "frame", "upload", "all"];
 
@@ -59,6 +59,9 @@ async function runStoreCommand(command: StoreCommand, args: string[]): Promise<v
     case "metadata":
       if (args.includes("--android")) await pushPlayMetadata(config);
       else await pushMetadata(config);
+      break;
+    case "release-notes":
+      await pushReleaseNotes(config);
       break;
     case "review":
       await submitForReview(config, {

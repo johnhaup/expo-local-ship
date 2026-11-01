@@ -152,6 +152,21 @@ function loadLocalizations(dir: string): Record<string, LocalizedListing> {
   );
 }
 
+/**
+ * Release notes for one version: ship/release-notes/<version>.json, { "en-US": "…", "de-DE": "…" }.
+ * Returns undefined when the file is absent; throws when it exists but has no entry for the default locale.
+ */
+export function loadReleaseNotes(config: ShipConfig): Record<string, string> | undefined {
+  const file = path.join(config.cwd, "ship", "release-notes", `${config.version}.json`);
+  const notes = readJson<Record<string, string>>(file);
+  if (!notes) return undefined;
+  if (!notes[config.locale]?.trim()) throw new Error(`${file} has no release notes for ${config.locale}`);
+  for (const [locale, text] of Object.entries(notes)) {
+    if (text.length > 4000) throw new Error(`Release notes for ${locale} are ${text.length} chars; App Store Connect allows 4000`);
+  }
+  return notes;
+}
+
 export function loadShipConfig(cwd: string): ShipConfig {
   const raw = readJson<RawConfig>(path.join(cwd, CONFIG_FILE));
   if (!raw) throw new Error(`No ${CONFIG_FILE} found in ${cwd}`);
