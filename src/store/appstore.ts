@@ -150,7 +150,8 @@ export function submitForReview(
         ...(notes ? ["--metadata_path", metadataDir] : ["--skip_metadata", "true"]),
         "--skip_screenshots", "true",
         "--submit_for_review", "true",
-      "--automatic_release", String(autoRelease),
+        "--reject_if_possible", "true", // a version still waiting for review is pulled back and replaced
+        "--automatic_release", String(autoRelease),
         "--submission_information", JSON.stringify({ add_id_info_uses_idfa: false }),
         ...(buildNumber ? ["--build_number", buildNumber] : []),
       ]);
