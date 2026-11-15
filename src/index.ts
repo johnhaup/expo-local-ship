@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { buildPlatform, type Platform } from "./build";
